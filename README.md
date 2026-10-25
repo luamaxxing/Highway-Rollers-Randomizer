@@ -14,7 +14,7 @@ A mod inspired by the [Wii Party equivalent](https://gamebanana.com/mods/645316)
 2. Copy `HighwayRollersRandomizer.wps` into `sd:/wiiu/environments/aroma/plugins`.  
 
 ## Dependencies
-These should all already be installed with Aroma, but if just make sure you have them installed if you get any errors related to them.
+These should all already be installed with Aroma, but you can double check.
 - Requires [WiiUPluginLoaderBackend](https://github.com/wiiu-env/WiiUPluginLoaderBackend) in `sd:/wiiu/environments/aroma/modules`.  
 - Requires [FunctionPatcherModule](https://github.com/wiiu-env/FunctionPatcherModule) in `sd:/wiiu/environments/aroma/modules`.  
 - Requires [NotificationModule](https://github.com/wiiu-env/NotificationModule) in `sd:/wiiu/environments/aroma/modules`.
