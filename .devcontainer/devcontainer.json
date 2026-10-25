@@ -1,0 +1,27 @@
+{
+  "name": "Highway Rollers Randomizer",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools"],
+      "settings": {
+        "C_Cpp.default.compilerPath": "/opt/devkitpro/devkitPPC/bin/powerpc-eabi-gcc",
+        "C_Cpp.default.includePath": [
+          "${workspaceFolder}/src",
+          "/opt/devkitpro/wups/include",
+          "/opt/devkitpro/wums/include",
+          "/opt/devkitpro/wut/include"
+        ],
+        "C_Cpp.default.defines": [
+          "__WIIU__",
+          "__WUT__",
+          "__WUPS__"
+        ],
+        "C_Cpp.default.cStandard": "gnu11"
+      }
+    }
+  }
+}

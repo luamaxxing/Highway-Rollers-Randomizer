@@ -1,0 +1,68 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: Release
+            debug: 0
+            target: HighwayRollersRandomizer
+          - variant: Debug
+            debug: 1
+            target: HighwayRollersRandomizer_DEBUG
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build Docker image
+        run: docker build -t highway-rollers-builder .
+      - name: Build plugin
+        env:
+          BUILD_DEBUG: ${{ matrix.debug }}
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          docker run --rm -v "${PWD}:/project" highway-rollers-builder \
+            make DEBUG="$BUILD_DEBUG" TARGET="$BUILD_TARGET"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          if-no-files-found: error
+          path: ${{ matrix.target }}.wps
+
+  release:
+    name: Publish prerelease
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: HighwayRollersRandomizer*
+          merge-multiple: true
+          path: artifacts
+      - name: Publish both plugins
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Build ${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/HighwayRollersRandomizer.wps
+            artifacts/HighwayRollersRandomizer_DEBUG.wps

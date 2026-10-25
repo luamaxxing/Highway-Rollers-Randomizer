@@ -1,0 +1,4 @@
+.game/
+build/
+*.wps
+*.elf
