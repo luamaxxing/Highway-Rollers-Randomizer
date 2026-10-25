@@ -13,14 +13,16 @@
 
 WUPS_PLUGIN_NAME("Highway Rollers Randomizer");
 WUPS_PLUGIN_DESCRIPTION("Randomizes the order of all the spaces in Wii Party U's Highway Rollers.");
-WUPS_PLUGIN_VERSION("v0.1.0");
+WUPS_PLUGIN_VERSION("v0.1.1");
 WUPS_PLUGIN_AUTHOR("luamaxxing");
 WUPS_PLUGIN_LICENSE("GPL");
 WUPS_USE_STORAGE("highway_rollers_randomizer");
 
 static const uint64_t target_titles[] = { UINT64_C(0x0005000010137d00) }; // title id of NTSC-U wii party u
 static const char setting_key[] = "randomize_board";
-static volatile bool requested = false;
+static volatile bool randomizer_enabled = false;
+static const char rerandomize_setting_key[] = "rerandomize_after_minigames";
+static volatile bool rerandomize_after_minigames = false;
 
 static HrMatch match;
 static PatchedFunctionHandle patch_handle;
@@ -124,17 +126,15 @@ DECL_FUNCTION(void, BuilderLoad, void *builder) {
         return;
     }
 
-    const bool next_match_enabled = requested;
-
-    // make generation persist throughout minigames
+    // seed for board generation, changes per minigame if option is enabled
     uint32_t seed = 0;
-    if (new_match && next_match_enabled) {
-        const uint64_t ticks = (uint64_t)OSGetTime();
-        seed = (uint32_t)ticks ^ (uint32_t)(ticks >> 32);
+    if (randomizer_enabled && (new_match || rerandomize_after_minigames)) {
+        seed = (uint32_t)OSGetTime();
+        if (!new_match) match.seed = seed;
     }
 
     // call the randomizer
-    const HrResult result = hr_apply(&match, board, new_match != 0, next_match_enabled, seed);
+    const HrResult result = hr_apply(&match, board, new_match != 0, randomizer_enabled, seed);
     if (result == HR_RANDOMIZED) {
         rebuild(manager);
         
@@ -149,18 +149,28 @@ DECL_FUNCTION(void, BuilderLoad, void *builder) {
     }
 }
 
-static void setting_changed(ConfigItemBoolean *item, bool value) {
+static void enabled_setting_changed(ConfigItemBoolean *item, bool value) {
     (void)item;
-    requested = value;
+    randomizer_enabled = value;
+}
+
+static void rerandomize_setting_changed(ConfigItemBoolean *item, bool value) {
+    (void)item;
+    rerandomize_after_minigames = value;
 }
 
 static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root) {
     if (OSGetTitleID() != target_titles[0]) return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
 
     if (WUPSConfigItemBoolean_AddToCategory(root, setting_key,
-            "Randomizer Enabled", false, requested, setting_changed)
+            "Randomizer Enabled", false, randomizer_enabled, enabled_setting_changed)
             != WUPSCONFIG_API_RESULT_SUCCESS) {
-        notify_error("Could not add the configuration toggle.");
+        return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
+    }
+
+    if (WUPSConfigItemBoolean_AddToCategory(root, rerandomize_setting_key,
+            "Re-Randomize After Minigames", false, rerandomize_after_minigames, rerandomize_setting_changed)
+            != WUPSCONFIG_API_RESULT_SUCCESS) {
         return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
     }
 
@@ -169,7 +179,8 @@ static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root) {
 
 static void menu_closed(void) {
     if (OSGetTitleID() != target_titles[0]) return;
-    if (WUPSStorageAPI_StoreBool(NULL, setting_key, requested) != WUPS_STORAGE_ERROR_SUCCESS) {
+    if (WUPSStorageAPI_StoreBool(NULL, setting_key, randomizer_enabled) != WUPS_STORAGE_ERROR_SUCCESS ||
+        WUPSStorageAPI_StoreBool(NULL, rerandomize_setting_key, rerandomize_after_minigames) != WUPS_STORAGE_ERROR_SUCCESS) {
         notify_error("Could not save randomization config.");
         return;
     }
@@ -194,13 +205,12 @@ static void start_game(void) {
             10.0);
     }
 
+    // load bools from storage
     bool saved = false;
-    const WUPSStorageError stored = WUPSStorageAPI_GetBool(NULL, setting_key, &saved);
-    requested = stored == WUPS_STORAGE_ERROR_SUCCESS ? saved : false;
-
-    if (stored != WUPS_STORAGE_ERROR_SUCCESS && stored != WUPS_STORAGE_ERROR_NOT_FOUND) {
-        notify_error("Could not read your saved config. Defaulting to off.");
-    }
+    randomizer_enabled = WUPSStorageAPI_GetBool(NULL, setting_key, &saved)
+        == WUPS_STORAGE_ERROR_SUCCESS && saved;
+    rerandomize_after_minigames = WUPSStorageAPI_GetBool(NULL, rerandomize_setting_key, &saved)
+        == WUPS_STORAGE_ERROR_SUCCESS && saved;
 
     // now that we're actually ingame we init the aroma config editor
     // may not be needed actually maybe we can init this outside the game :p
@@ -230,8 +240,7 @@ static void start_game(void) {
         return;
     }
 
-    notify_info("Loaded successfully!");
-    notify_info(requested
+    notify_info(randomizer_enabled
         ? "The randomizer is currently on."
         : "The randomizer is currently off.");
 }

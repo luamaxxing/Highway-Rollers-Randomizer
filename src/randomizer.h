@@ -6,7 +6,6 @@
 #define HR_RECORD_STRIDE 0x3cu
 #define HR_TYPE_OFFSET 0x2cu
 #define HR_MAX_RECORDS 1024u
-#define HR_FALLBACK_SEED UINT32_C(0x6d2b79f5)
 
 typedef struct { uint8_t *records; uint32_t count; } HrBoard;
 typedef struct {
@@ -23,4 +22,4 @@ uint32_t hr_fingerprint(HrBoard board);
 uint32_t hr_next_random(void *state);
 uint32_t hr_bounded_random(uint32_t bound, HrNextRandom next, void *context);
 void hr_shuffle(HrBoard board, uint32_t seed);
-HrResult hr_apply(HrMatch *match, HrBoard board, bool fresh, bool requested, uint32_t seed);
+HrResult hr_apply(HrMatch *match, HrBoard board, bool fresh, bool randomizer_enabled, uint32_t seed);

@@ -57,13 +57,13 @@ void hr_shuffle(HrBoard board, uint32_t seed) {
     }
 }
 
-HrResult hr_apply(HrMatch *match, HrBoard board, bool fresh, bool requested, uint32_t seed) {
+HrResult hr_apply(HrMatch *match, HrBoard board, bool fresh, bool randomizer_enabled, uint32_t seed) {
     if (board.count > HR_MAX_RECORDS || (!board.records && board.count)) return HR_INVALID_BOARD;
     const uint32_t fingerprint = hr_fingerprint(board);
     if (fresh) {
         match->valid = true;
-        match->enabled = requested;
-        match->seed = requested ? (seed ? seed : HR_FALLBACK_SEED) : 0;
+        match->enabled = randomizer_enabled;
+        match->seed = randomizer_enabled ? seed : 0;
         match->stock_fingerprint = fingerprint;
     }
     if (!match->valid || !match->enabled) return HR_STOCK;
