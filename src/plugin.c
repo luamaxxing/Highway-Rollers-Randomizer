@@ -1,5 +1,7 @@
 #include <wups.h>
 #include <wups/config/WUPSConfigItemBoolean.h>
+#include <wups/config/WUPSConfigItemMultipleValues.h>
+#include <wups/config/WUPSConfigItemStub.h>
 #include <coreinit/dynload.h>
 #include <coreinit/memorymap.h>
 #include <coreinit/time.h>
@@ -13,16 +15,18 @@
 
 WUPS_PLUGIN_NAME("Highway Rollers Randomizer");
 WUPS_PLUGIN_DESCRIPTION("Randomizes the order of all the spaces in Wii Party U's Highway Rollers.");
-WUPS_PLUGIN_VERSION("v0.1.1");
+WUPS_PLUGIN_VERSION("v0.1.2");
 WUPS_PLUGIN_AUTHOR("luamaxxing");
 WUPS_PLUGIN_LICENSE("GPL");
 WUPS_USE_STORAGE("highway_rollers_randomizer");
 
 static const uint64_t target_titles[] = { UINT64_C(0x0005000010137d00) }; // title id of NTSC-U wii party u
-static const char setting_key[] = "randomize_board";
+static const char randomizer_enabled_key[] = "randomize_board";
+static const char rerandomize_after_minigames_key[] = "rerandomize_after_minigames";
+static const char randomization_method_key[] = "randomization_method";
 static volatile bool randomizer_enabled = false;
-static const char rerandomize_setting_key[] = "rerandomize_after_minigames";
 static volatile bool rerandomize_after_minigames = false;
+static volatile HrRandomizationMethod randomization_method = HR_METHOD_SHUFFLE_EXISTING;
 
 static HrMatch match;
 static PatchedFunctionHandle patch_handle;
@@ -128,13 +132,21 @@ DECL_FUNCTION(void, BuilderLoad, void *builder) {
 
     // seed for board generation, changes per minigame if option is enabled
     uint32_t seed = 0;
-    if (randomizer_enabled && (new_match || rerandomize_after_minigames)) {
+    if (randomizer_enabled && (new_match || match.rerandomize)) {
         seed = (uint32_t)OSGetTime();
         if (!new_match) match.seed = seed;
     }
 
     // call the randomizer
-    const HrResult result = hr_apply(&match, board, new_match != 0, randomizer_enabled, seed);
+    const HrResult result = hr_apply(
+        &match, 
+        board, 
+        new_match != 0, 
+        randomizer_enabled,
+        rerandomize_after_minigames,
+        randomization_method, 
+        seed
+    );
     if (result == HR_RANDOMIZED) {
         rebuild(manager);
         
@@ -143,6 +155,9 @@ DECL_FUNCTION(void, BuilderLoad, void *builder) {
             snprintf(seed_message, sizeof(seed_message), "Seed: 0x%08X", (unsigned)match.seed);
             notify_info("Board randomized!");
             notify_info(seed_message);
+            notify_info(match.method == HR_METHOD_RANDOMIZE_INDEPENDENTLY
+                ? "Randomized Independently"
+                : "Shuffled Existing");
         #endif
     } else if (result != HR_STOCK) {
         notify_error("Failed to randomize the board.");
@@ -159,18 +174,44 @@ static void rerandomize_setting_changed(ConfigItemBoolean *item, bool value) {
     rerandomize_after_minigames = value;
 }
 
-static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root) {
-    if (OSGetTitleID() != target_titles[0]) return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
+static void method_setting_changed(ConfigItemMultipleValues *item, uint32_t value) {
+    (void)item;
+    randomization_method = (HrRandomizationMethod)value;
+}
 
-    if (WUPSConfigItemBoolean_AddToCategory(root, setting_key,
+static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root) {
+    if (OSGetTitleID() != target_titles[0]) {
+        if (WUPSConfigItemStub_AddToCategory(root, "Can only be used while Wii Party U is open.")
+                != WUPSCONFIG_API_RESULT_SUCCESS)
+            return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
+        return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
+    }
+
+    if (WUPSConfigItemBoolean_AddToCategory(root, randomizer_enabled_key,
             "Randomizer Enabled", false, randomizer_enabled, enabled_setting_changed)
             != WUPSCONFIG_API_RESULT_SUCCESS) {
         return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
     }
 
-    if (WUPSConfigItemBoolean_AddToCategory(root, rerandomize_setting_key,
+    WUPSConfigCategoryHandle options;
+    const WUPSConfigAPICreateCategoryOptionsV1 category_options = { .name = "Randomization Options" };
+    if (WUPSConfigAPI_Category_Create(category_options, &options) != WUPSCONFIG_API_RESULT_SUCCESS)
+        return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
+
+    ConfigItemMultipleValuesPair methods[] = {
+        { HR_METHOD_SHUFFLE_EXISTING, "Shuffle Existing" },
+        { HR_METHOD_RANDOMIZE_INDEPENDENTLY, "Randomize Independently" }
+    };
+
+    if (WUPSConfigItemBoolean_AddToCategory(options, rerandomize_after_minigames_key,
             "Re-Randomize After Minigames", false, rerandomize_after_minigames, rerandomize_setting_changed)
-            != WUPSCONFIG_API_RESULT_SUCCESS) {
+            != WUPSCONFIG_API_RESULT_SUCCESS ||
+        WUPSConfigItemMultipleValues_AddToCategory(options, randomization_method_key,
+            "Randomization Method", HR_METHOD_SHUFFLE_EXISTING, randomization_method,
+            methods, 2, method_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS ||
+        WUPSConfigAPI_Category_AddCategory(root, options) != WUPSCONFIG_API_RESULT_SUCCESS) 
+    {
+        WUPSConfigAPI_Category_Destroy(options);
         return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
     }
 
@@ -179,8 +220,10 @@ static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root) {
 
 static void menu_closed(void) {
     if (OSGetTitleID() != target_titles[0]) return;
-    if (WUPSStorageAPI_StoreBool(NULL, setting_key, randomizer_enabled) != WUPS_STORAGE_ERROR_SUCCESS ||
-        WUPSStorageAPI_StoreBool(NULL, rerandomize_setting_key, rerandomize_after_minigames) != WUPS_STORAGE_ERROR_SUCCESS) {
+    if (WUPSStorageAPI_StoreBool(NULL, randomizer_enabled_key, randomizer_enabled) != WUPS_STORAGE_ERROR_SUCCESS ||
+        WUPSStorageAPI_StoreBool(NULL, rerandomize_after_minigames_key, rerandomize_after_minigames) != WUPS_STORAGE_ERROR_SUCCESS ||
+        WUPSStorageAPI_StoreU32(NULL, randomization_method_key, randomization_method) != WUPS_STORAGE_ERROR_SUCCESS) 
+    {
         notify_error("Could not save randomization config.");
         return;
     }
@@ -188,7 +231,10 @@ static void menu_closed(void) {
         notify_error("Could not save randomization config to SD.");
 }
 
-INITIALIZE_PLUGIN() {} 
+INITIALIZE_PLUGIN() {
+    const WUPSConfigAPIOptionsV1 options = { .name = "Highway Rollers Randomizer" };
+    config_ready = WUPSConfigAPI_Init(options, menu_opened, menu_closed) == WUPSCONFIG_API_RESULT_SUCCESS;
+}
 
 static void start_game(void) {
     notifications_ready = NotificationModule_InitLibrary() == NOTIFICATION_MODULE_RESULT_SUCCESS;
@@ -205,22 +251,17 @@ static void start_game(void) {
             10.0);
     }
 
-    // load bools from storage
+    // load options from storage
     bool saved = false;
-    randomizer_enabled = WUPSStorageAPI_GetBool(NULL, setting_key, &saved)
+    randomizer_enabled = WUPSStorageAPI_GetBool(NULL, randomizer_enabled_key, &saved)
         == WUPS_STORAGE_ERROR_SUCCESS && saved;
-    rerandomize_after_minigames = WUPSStorageAPI_GetBool(NULL, rerandomize_setting_key, &saved)
+    rerandomize_after_minigames = WUPSStorageAPI_GetBool(NULL, rerandomize_after_minigames_key, &saved)
         == WUPS_STORAGE_ERROR_SUCCESS && saved;
+    uint32_t saved_method = HR_METHOD_SHUFFLE_EXISTING;
+    randomization_method = WUPSStorageAPI_GetU32(NULL, randomization_method_key, &saved_method)
+        == WUPS_STORAGE_ERROR_SUCCESS && saved_method <= HR_METHOD_RANDOMIZE_INDEPENDENTLY
+        ? (HrRandomizationMethod)saved_method : HR_METHOD_SHUFFLE_EXISTING;
 
-    // now that we're actually ingame we init the aroma config editor
-    // may not be needed actually maybe we can init this outside the game :p
-    const WUPSConfigAPIOptionsV1 options = { .name = "Highway Rollers Randomizer" };
-    if (!config_ready)
-        config_ready = WUPSConfigAPI_Init(options, menu_opened, menu_closed) == WUPSCONFIG_API_RESULT_SUCCESS;
-    if (!config_ready) {
-        notify_error("Aroma config API unavailable, unable to load.");
-        return;
-    }
     if (patch_registered) return;
     
     if (!library_ready) library_ready = FunctionPatcher_InitLibrary() == FUNCTION_PATCHER_RESULT_SUCCESS;
