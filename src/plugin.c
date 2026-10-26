@@ -32,6 +32,7 @@ static HrMatch match;
 static PatchedFunctionHandle patch_handle;
 
 static bool patch_registered;
+static bool watching_module_updates;
 static bool library_ready;
 static bool notifications_ready;
 static bool config_ready;
@@ -152,12 +153,11 @@ DECL_FUNCTION(void, BuilderLoad, void *builder) {
         
         #ifdef HR_DEBUG
             char seed_message[32];
-            snprintf(seed_message, sizeof(seed_message), "Seed: 0x%08X", (unsigned)match.seed);
-            notify_info("Board randomized!");
+            snprintf(seed_message, sizeof(seed_message), "[Debug] Seed: 0x%08X", (unsigned)match.seed);
             notify_info(seed_message);
             notify_info(match.method == HR_METHOD_RANDOMIZE_INDEPENDENTLY
-                ? "Randomized Independently"
-                : "Shuffled Existing");
+                ? "[Debug] Randomized Independently"
+                : "[Debug] Shuffled Existing");
         #endif
     } else if (result != HR_STOCK) {
         notify_error("Failed to randomize the board.");
@@ -177,6 +177,46 @@ static void rerandomize_setting_changed(ConfigItemBoolean *item, bool value) {
 static void method_setting_changed(ConfigItemMultipleValues *item, uint32_t value) {
     (void)item;
     randomization_method = (HrRandomizationMethod)value;
+}
+
+static void register_board_hook(void) {
+    function_replacement_data_t replacement = REPLACE_FUNCTION_OF_EXECUTABLE_BY_FUNCTION_NAME(
+        BuilderLoad, target_titles, 1, "npg027.rpl", HR_LOAD_SYMBOL);
+    replacement.targetProcess = FP_TARGET_PROCESS_GAME;
+
+    bool installed = false;
+    patch_registered = FunctionPatcher_AddFunctionPatch(&replacement, &patch_handle, &installed) == FUNCTION_PATCHER_RESULT_SUCCESS;
+    if (!patch_registered)
+        notify_error("Failed to create board load hook, unable to load.");
+
+    #ifdef HR_DEBUG
+        else notify_info(installed
+            ? "[Debug] Board hook installed"
+            : "[Debug] Waiting for module");
+    #endif
+}
+
+static void module_changed(
+    OSDynLoad_Module module, 
+    void *context,
+    OSDynLoad_NotifyReason reason, 
+    OSDynLoad_NotifyData *info) 
+{
+    (void)module;
+    (void)context;
+
+    if (!library_ready || reason != OS_DYNLOAD_NOTIFY_LOADED || !info || !hr_module_name_matches(info->name)) 
+        return;
+
+    // repatch
+    if (patch_registered) {
+        if (FunctionPatcher_RemoveFunctionPatch(patch_handle) != FUNCTION_PATCHER_RESULT_SUCCESS) {
+            notify_error("Could not refresh the board load hook.");
+            return;
+        }
+        patch_registered = false;
+    }
+    register_board_hook();
 }
 
 static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root) {
@@ -270,16 +310,16 @@ static void start_game(void) {
         return;
     }
 
-    // replace the board loader function with our implementation
-    function_replacement_data_t replacement = REPLACE_FUNCTION_OF_EXECUTABLE_BY_FUNCTION_NAME(
-        BuilderLoad, target_titles, 1, "npg027.rpl", HR_LOAD_SYMBOL);
-    replacement.targetProcess = FP_TARGET_PROCESS_GAME;
-    patch_registered = FunctionPatcher_AddFunctionPatch(&replacement, &patch_handle, NULL) == FUNCTION_PATCHER_RESULT_SUCCESS;
-    
-    if (!patch_registered) {
-        notify_error("Failed during hook initialization, unable to load.");
-        return;
+    if (!watching_module_updates) {
+        watching_module_updates = OSDynLoad_AddNotifyCallback(module_changed, NULL) == OS_DYNLOAD_OK;
+        if (!watching_module_updates) {
+            notify_error("Failed to watch for module updates, unable to load.");
+            return;
+        }
     }
+    register_board_hook();
+
+    if (!patch_registered) return;
 
     notify_info(randomizer_enabled
         ? "The randomizer is currently on."
@@ -293,13 +333,17 @@ ON_APPLICATION_START() {
 }
 
 static void stop_game(void) {
+    if (watching_module_updates) {
+        (void)OSDynLoad_DelNotifyCallback(module_changed, NULL);
+        watching_module_updates = false;
+    }
     if (patch_registered) {
         const FunctionPatcherStatus result = FunctionPatcher_RemoveFunctionPatch(patch_handle);
         if (result != FUNCTION_PATCHER_RESULT_SUCCESS)
             notify_error("Could not remove the board randomization hook.");
         else patch_registered = false;
     }
-    if (library_ready && !patch_registered) {
+    if (library_ready && !patch_registered && !watching_module_updates) {
         if (FunctionPatcher_DeInitLibrary() != FUNCTION_PATCHER_RESULT_SUCCESS)
             notify_error("Could not release FunctionPatcherModule.");
         else library_ready = false;
