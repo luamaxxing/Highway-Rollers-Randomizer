@@ -186,24 +186,6 @@ DECL_FUNCTION(void, BuilderLoad, void *builder)
     }
 }
 
-static void enabled_setting_changed(ConfigItemBoolean *item, bool value)
-{
-    (void)item;
-    randomizer_enabled = value;
-}
-
-static void rerandomize_setting_changed(ConfigItemBoolean *item, bool value)
-{
-    (void)item;
-    rerandomize_after_minigames = value;
-}
-
-static void method_setting_changed(ConfigItemMultipleValues *item, uint32_t value)
-{
-    (void)item;
-    randomization_method = (HrRandomizationMethod)value;
-}
-
 static void register_board_hook(void)
 {
     function_replacement_data_t replacement = REPLACE_FUNCTION_OF_EXECUTABLE_BY_FUNCTION_NAME(
@@ -245,6 +227,30 @@ static void module_changed(
         patch_registered = false;
     }
     register_board_hook();
+}
+
+static void enabled_setting_changed(ConfigItemBoolean *item, bool value)
+{
+    (void)item;
+    randomizer_enabled = value;
+}
+
+static void rerandomize_setting_changed(ConfigItemBoolean *item, bool value)
+{
+    (void)item;
+    rerandomize_after_minigames = value;
+}
+
+static void method_setting_changed(ConfigItemMultipleValues *item, uint32_t value)
+{
+    (void)item;
+    randomization_method = (HrRandomizationMethod)value;
+}
+
+static bool settings_difference(void)
+{
+    return match.valid && (randomizer_enabled != match.enabled || rerandomize_after_minigames != match.rerandomize ||
+                              randomization_method != match.method);
 }
 
 static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root)
@@ -289,6 +295,7 @@ static void menu_closed(void)
 {
     if (!revision || OSGetTitleID() != revision->title_id)
         return;
+
     if (WUPSStorageAPI_StoreBool(NULL, randomizer_enabled_key, randomizer_enabled) != WUPS_STORAGE_ERROR_SUCCESS ||
         WUPSStorageAPI_StoreBool(NULL, rerandomize_after_minigames_key, rerandomize_after_minigames) !=
             WUPS_STORAGE_ERROR_SUCCESS ||
@@ -297,8 +304,14 @@ static void menu_closed(void)
         notify_error("Could not save randomization config.");
         return;
     }
+
     if (WUPSStorageAPI_SaveStorage(false) != WUPS_STORAGE_ERROR_SUCCESS)
         notify_error("Could not save randomization config to SD.");
+
+    if (settings_difference())
+    {
+        notify_info("Your changes will only apply to new matches.");
+    }
 }
 
 INITIALIZE_PLUGIN()
