@@ -15,7 +15,7 @@
 
 WUPS_PLUGIN_NAME("Highway Rollers Randomizer");
 WUPS_PLUGIN_DESCRIPTION("Randomizes the order of all the spaces in Wii Party U's Highway Rollers.");
-WUPS_PLUGIN_VERSION("v0.1.2");
+WUPS_PLUGIN_VERSION("v0.1.3");
 WUPS_PLUGIN_AUTHOR("luamaxxing");
 WUPS_PLUGIN_LICENSE("GPL");
 WUPS_USE_STORAGE("highway_rollers_randomizer");
@@ -155,7 +155,7 @@ DECL_FUNCTION(void, BuilderLoad, void *builder)
 
     // seed for board generation, changes per minigame if option is enabled
     uint32_t seed = 0;
-    if (randomizer_enabled && (new_match || match.rerandomize))
+    if ((new_match ? randomizer_enabled : match.enabled) && (new_match || match.rerandomize))
     {
         seed = (uint32_t)OSGetTime();
         if (!new_match)
@@ -310,7 +310,7 @@ static void menu_closed(void)
 
     if (settings_difference())
     {
-        notify_info("Your changes will only apply to new matches.");
+        notify_error("Your changes will only apply to new matches.");
     }
 }
 
