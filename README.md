@@ -1,12 +1,13 @@
 # Wii Party U - Highway Rollers Board Randomizer
 A mod inspired by the [Wii Party equivalent](https://gamebanana.com/mods/645316) that Poofesure has been playing.
 
-> [!WARNING]
-> This mod only works for the North America (NTSC-U) version of the game.
+> [!NOTE]
+> This mod is still in development, if you have any problems, please create an [issue](https://github.com/luamaxxing/Highway-Rollers-Randomizer/issues)!
 
 # Compatability
 - This mod is made for modded Wii U's using [Aroma](https://aroma.foryour.cafe/) custom firmware, on version **Beta-27** or higher.
-- If you are on a different region Wii U, you can install the NTSC-U version of the game and still be able to load it as long as you have the [RegionFreePlugin](https://github.com/wiiu-env/region_free_plugin) installed.
+- All regions are supported (`NTSC-U`, `PAL`, & `NTSC-J`) as long as you are on **v0.1.3** of the mod or higher.
+    - `NTSC-U` and `PAL` have been tested on actual hardware, but `NTSC-J` hasn't been. Create an [issue](https://github.com/luamaxxing/Highway-Rollers-Randomizer/issues) if you encounter any problems.
 
 # Installation
 1. Setup [Aroma](https://wiiu.hacks.guide/aroma/getting-started.html) or update it through **Aroma Updater**.
