@@ -15,8 +15,7 @@ typedef struct
     uint32_t manager_records_offset;
 } HrRevision;
 
-static const HrRevision ntsc_u = {
-    .title_id = 0x0005000010137D00,
+static const HrRevision base = {
     .load_symbol = "Load__Q2_6npg02711BuilderMegaFv",
     .model_function_offset = 0x18200u,
     .builder_manager_offset = 0xd78u,
@@ -26,4 +25,4 @@ static const HrRevision ntsc_u = {
 };
 
 bool hr_module_name_matches(const char *name);
-const HrRevision *hr_find_revision(uint64_t title_id);
+bool hr_get_revision(uint64_t title_id, HrRevision *out);

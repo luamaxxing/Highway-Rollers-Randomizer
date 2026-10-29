@@ -29,6 +29,7 @@ static volatile HrRandomizationMethod randomization_method = HR_METHOD_SHUFFLE_E
 
 static HrMatch match;
 static PatchedFunctionHandle patch_handle;
+static HrRevision selected_revision;
 static const HrRevision *revision;
 
 static bool patch_registered;
@@ -308,9 +309,10 @@ INITIALIZE_PLUGIN()
 
 static void start_game(void)
 {
-    revision = hr_find_revision(OSGetTitleID());
-    if (!revision)
+    revision = NULL;
+    if (!hr_get_revision(OSGetTitleID(), &selected_revision))
         return;
+    revision = &selected_revision;
 
     memset(&match, 0, sizeof(match));
 
