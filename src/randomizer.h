@@ -6,6 +6,7 @@
 #define HR_RECORD_STRIDE 0x3cu
 #define HR_TYPE_OFFSET 0x2cu
 #define HR_MAX_RECORDS 1024u
+#define HR_SPACE_TYPE_COUNT 13
 
 typedef struct
 {
@@ -25,6 +26,7 @@ typedef struct
     HrRandomizationMethod method;
     uint32_t seed;
     uint32_t stock_fingerprint;
+    uint16_t weights[HR_SPACE_TYPE_COUNT];
 } HrMatch;
 typedef enum
 {
@@ -36,4 +38,4 @@ typedef enum
 typedef uint32_t (*HrNextRandom)(void *context);
 
 HrResult hr_apply(HrMatch *match, HrBoard board, bool fresh, bool randomizer_enabled, bool rerandomize,
-    HrRandomizationMethod method, uint32_t seed);
+    HrRandomizationMethod method, const uint16_t weights[HR_SPACE_TYPE_COUNT], uint32_t seed);

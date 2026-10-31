@@ -1,5 +1,6 @@
 #include "randomizer.h"
 #include "revision.h"
+#include "weight_editor.h"
 #include <coreinit/dynload.h>
 #include <coreinit/memorymap.h>
 #include <coreinit/time.h>
@@ -163,8 +164,8 @@ DECL_FUNCTION(void, BuilderLoad, void *builder)
     }
 
     // call the randomizer
-    const HrResult result = hr_apply(
-        &match, board, new_match != 0, randomizer_enabled, rerandomize_after_minigames, randomization_method, seed);
+    const HrResult result = hr_apply(&match, board, new_match != 0, randomizer_enabled, rerandomize_after_minigames,
+        randomization_method, space_weights, seed);
     if (result == HR_RANDOMIZED)
     {
         rebuild(manager);
@@ -175,7 +176,7 @@ DECL_FUNCTION(void, BuilderLoad, void *builder)
             snprintf(seed_message, sizeof(seed_message), "[Debug] Seed: 0x%08X", (unsigned)match.seed);
             notify_info(seed_message);
             notify_info(match.method == HR_METHOD_RANDOMIZE_INDEPENDENTLY
-                ? "[Debug] Randomized Independently"
+                ? "[Debug] Used Weights"
                 : "[Debug] Shuffled Existing");
         #endif
         // clang-format on
@@ -249,8 +250,17 @@ static void method_setting_changed(ConfigItemMultipleValues *item, uint32_t valu
 
 static bool settings_difference(void)
 {
-    return match.valid && (randomizer_enabled != match.enabled || rerandomize_after_minigames != match.rerandomize ||
-                              randomization_method != match.method);
+    if (!match.valid)
+        return false;
+
+    if (randomizer_enabled != match.enabled || rerandomize_after_minigames != match.rerandomize ||
+        randomization_method != match.method)
+    {
+        return true;
+    }
+
+    return match.method == HR_METHOD_RANDOMIZE_INDEPENDENTLY &&
+           memcmp(space_weights, match.weights, sizeof(space_weights)) != 0;
 }
 
 static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root)
@@ -274,14 +284,15 @@ static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root)
     if (WUPSConfigAPI_Category_Create(category_options, &options) != WUPSCONFIG_API_RESULT_SUCCESS)
         return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
 
-    ConfigItemMultipleValuesPair methods[] = {{HR_METHOD_SHUFFLE_EXISTING, "Shuffle Existing"},
-        {HR_METHOD_RANDOMIZE_INDEPENDENTLY, "Randomize Independently"}};
+    ConfigItemMultipleValuesPair methods[] = {
+        {HR_METHOD_SHUFFLE_EXISTING, "Shuffle Existing"}, {HR_METHOD_RANDOMIZE_INDEPENDENTLY, "Weighted"}};
 
-    if (WUPSConfigItemBoolean_AddToCategory(options, rerandomize_after_minigames_key, "Re-Randomize After Minigames",
-            false, rerandomize_after_minigames, rerandomize_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS ||
-        WUPSConfigItemMultipleValues_AddToCategory(options, randomization_method_key, "Randomization Method",
+    if (WUPSConfigItemMultipleValues_AddToCategory(options, randomization_method_key, "Randomization Method",
             HR_METHOD_SHUFFLE_EXISTING, randomization_method, methods, 2,
             method_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS ||
+        WUPSConfigItemBoolean_AddToCategory(options, rerandomize_after_minigames_key, "Re-Randomize After Minigames",
+            false, rerandomize_after_minigames, rerandomize_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS ||
+        hr_create_weight_editor(options) != WUPSCONFIG_API_RESULT_SUCCESS ||
         WUPSConfigAPI_Category_AddCategory(root, options) != WUPSCONFIG_API_RESULT_SUCCESS)
     {
         WUPSConfigAPI_Category_Destroy(options);
@@ -296,10 +307,16 @@ static void menu_closed(void)
     if (!revision || OSGetTitleID() != revision->title_id)
         return;
 
+    bool restored_previous = false;
+    const bool weights_saved = save_weights(&restored_previous);
+    if (restored_previous)
+        notify_error("You need to set at least one space type's weight. Reverted changes.");
+
     if (WUPSStorageAPI_StoreBool(NULL, randomizer_enabled_key, randomizer_enabled) != WUPS_STORAGE_ERROR_SUCCESS ||
         WUPSStorageAPI_StoreBool(NULL, rerandomize_after_minigames_key, rerandomize_after_minigames) !=
             WUPS_STORAGE_ERROR_SUCCESS ||
-        WUPSStorageAPI_StoreU32(NULL, randomization_method_key, randomization_method) != WUPS_STORAGE_ERROR_SUCCESS)
+        WUPSStorageAPI_StoreU32(NULL, randomization_method_key, randomization_method) != WUPS_STORAGE_ERROR_SUCCESS ||
+        !weights_saved)
     {
         notify_error("Could not save randomization config.");
         return;
@@ -351,6 +368,8 @@ static void start_game(void)
                 saved_method <= HR_METHOD_RANDOMIZE_INDEPENDENTLY
             ? (HrRandomizationMethod)saved_method
             : HR_METHOD_SHUFFLE_EXISTING;
+
+    load_weights();
 
     if (patch_registered)
         return;
