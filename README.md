@@ -29,10 +29,15 @@ These should all already be installed with Aroma.
 ## Settings
 - `Randomization Method` (default: `Shuffle Existing`)  
     - Shuffle Existing: Shuffles the board while keeping the number of each space type unchanged
-    - Randomize Independently: Each space is randomized individually
-        - This leads to much more chaotic generation, since every space type has an equal chance to spawn
+    - Weighted: Each space is randomized individually, with chances determined by your space weights.
+        - Weights can be edited with the `Weight Editor`.
 - `Re-Randomize After Minigames` (default: `false`)
     - Instead of randomizing once at the start of the game, the board will randomize after every single minigame (Including versus spaces)
+- `Weight Editor` (default: `everything's equal`)
+    - Lets you adjust how likely each space is to appear in the `Weighted` randomization mode.
+        - Use `D-Pad Left` and `D-Pad Right` to increment by 1, and use `L` and `R` to increment by 10.
+        - `Reset to Default` will set every space's weight back to 1.
+        - Setting a space's weight to 0 will completely remove it from the board.
 
 # Development
 ## Windows (Requires Docker Desktop)
