@@ -269,37 +269,42 @@ static WUPSConfigAPICallbackStatus menu_opened(WUPSConfigCategoryHandle root)
     {
         if (WUPSConfigItemStub_AddToCategory(root, "Can only be used while Wii Party U is open.") !=
             WUPSCONFIG_API_RESULT_SUCCESS)
-            return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
+            goto fail;
         return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
     }
 
     if (WUPSConfigItemBoolean_AddToCategory(root, randomizer_enabled_key, "Randomizer Enabled", false,
             randomizer_enabled, enabled_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS)
-    {
-        return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
-    }
+        goto fail;
 
     WUPSConfigCategoryHandle options;
     const WUPSConfigAPICreateCategoryOptionsV1 category_options = {.name = "Randomization Options"};
     if (WUPSConfigAPI_Category_Create(category_options, &options) != WUPSCONFIG_API_RESULT_SUCCESS)
-        return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
+        goto fail;
 
     ConfigItemMultipleValuesPair methods[] = {
         {HR_METHOD_SHUFFLE_EXISTING, "Shuffle Existing"}, {HR_METHOD_RANDOMIZE_INDEPENDENTLY, "Weighted"}};
 
     if (WUPSConfigItemMultipleValues_AddToCategory(options, randomization_method_key, "Randomization Method",
             HR_METHOD_SHUFFLE_EXISTING, randomization_method, methods, 2,
-            method_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS ||
-        WUPSConfigItemBoolean_AddToCategory(options, rerandomize_after_minigames_key, "Re-Randomize After Minigames",
-            false, rerandomize_after_minigames, rerandomize_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS ||
-        hr_create_weight_editor(options) != WUPSCONFIG_API_RESULT_SUCCESS ||
-        WUPSConfigAPI_Category_AddCategory(root, options) != WUPSCONFIG_API_RESULT_SUCCESS)
-    {
-        WUPSConfigAPI_Category_Destroy(options);
-        return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
-    }
+            method_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS)
+        goto fail_options;
+
+    if (WUPSConfigItemBoolean_AddToCategory(options, rerandomize_after_minigames_key, "Re-Randomize After Minigames",
+            false, rerandomize_after_minigames, rerandomize_setting_changed) != WUPSCONFIG_API_RESULT_SUCCESS)
+        goto fail_options;
+
+    if (hr_create_weight_editor(options) != WUPSCONFIG_API_RESULT_SUCCESS)
+        goto fail_options;
+
+    if (WUPSConfigAPI_Category_AddCategory(root, options) != WUPSCONFIG_API_RESULT_SUCCESS)
+        goto fail_options;
 
     return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
+fail_options:
+    WUPSConfigAPI_Category_Destroy(options);
+fail:
+    return WUPSCONFIG_API_CALLBACK_RESULT_ERROR;
 }
 
 static void menu_closed(void)
