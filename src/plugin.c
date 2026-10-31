@@ -16,7 +16,7 @@
 
 WUPS_PLUGIN_NAME("Highway Rollers Randomizer");
 WUPS_PLUGIN_DESCRIPTION("Randomizes the order of all the spaces in Wii Party U's Highway Rollers.");
-WUPS_PLUGIN_VERSION("v0.1.3");
+WUPS_PLUGIN_VERSION("v0.1.4");
 WUPS_PLUGIN_AUTHOR("luamaxxing");
 WUPS_PLUGIN_LICENSE("GPL");
 WUPS_USE_STORAGE("highway_rollers_randomizer");
